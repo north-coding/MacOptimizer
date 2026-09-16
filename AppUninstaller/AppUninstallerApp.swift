@@ -51,6 +51,24 @@ struct AppUninstallerApp: App {
                     }
                 }
             }
+
+            CommandMenu("Codex") {
+                Button {
+                    CodexRoundTripWindowController.shared.show()
+                } label: {
+                    Label(
+                        localization.text(
+                            simplifiedChinese: "打开 Codex 安全审阅",
+                            traditionalChinese: "開啟 Codex 安全審閱",
+                            english: "Open Codex Safe Review",
+                            japanese: "Codex セーフレビューを開く",
+                            korean: "Codex 안전 검토 열기",
+                            russian: "Открыть безопасную проверку Codex"
+                        ),
+                        systemImage: "checklist"
+                    )
+                }
+            }
         }
         // Keep AppKit's native titlebar buttons. AppDelegate makes the
         // titlebar transparent and expands the content under it, matching the

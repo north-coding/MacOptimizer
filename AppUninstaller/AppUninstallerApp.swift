@@ -68,6 +68,22 @@ struct AppUninstallerApp: App {
                         systemImage: "checklist"
                     )
                 }
+
+                Button {
+                    CodexJunkGroupWindowController.shared.show()
+                } label: {
+                    Label(
+                        localization.text(
+                            simplifiedChinese: "打开垃圾缓存分组审阅",
+                            traditionalChinese: "開啟垃圾快取分組審閱",
+                            english: "Open Junk Cache Group Review",
+                            japanese: "ジャンクキャッシュのグループレビューを開く",
+                            korean: "정크 캐시 그룹 검토 열기",
+                            russian: "Открыть групповую проверку кэша"
+                        ),
+                        systemImage: "square.stack.3d.up"
+                    )
+                }
             }
         }
         // Keep AppKit's native titlebar buttons. AppDelegate makes the

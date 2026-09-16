@@ -40,6 +40,7 @@ struct CodexRoundTripReviewView: View {
     @State private var validated: [ValidatedCodexAssessment] = []
     @State private var statusMessage = ""
     @State private var statusIsError = false
+    @State private var isScanning = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -61,12 +62,12 @@ struct CodexRoundTripReviewView: View {
                 .font(.system(size: 22, weight: .semibold))
 
             Text(t(
-                "导出最近一次真实扫描，让本机 Codex 给出 keep / review / trash 建议；建议只用于审阅，不会执行删除。",
-                "匯出最近一次真實掃描，讓本機 Codex 提供 keep / review / trash 建議；建議只供審閱，不會執行刪除。",
-                "Export the latest real scan for local Codex analysis. Recommendations are review-only and cannot delete files.",
-                "最新の実スキャンをローカル Codex に渡します。提案はレビュー専用で、ファイル削除は実行できません。",
-                "최근 실제 검사 결과를 로컬 Codex에 전달합니다. 권고는 검토 전용이며 파일을 삭제할 수 없습니다.",
-                "Экспортирует последний реальный результат сканирования для локального Codex. Рекомендации предназначены только для проверки и не удаляют файлы."
+                "可直接运行一次只读安全垃圾扫描，再导出给本机 Codex；建议只用于审阅，不会执行删除。",
+                "可直接執行一次唯讀安全垃圾掃描，再匯出給本機 Codex；建議只供審閱，不會執行刪除。",
+                "Run a read-only safe junk scan, then export it for local Codex analysis. Recommendations are review-only and cannot delete files.",
+                "読み取り専用の安全なジャンクスキャンを実行し、ローカル Codex に渡します。提案はレビュー専用で削除は実行しません。",
+                "읽기 전용 안전 정크 검사를 실행한 뒤 로컬 Codex에 전달합니다. 권고는 검토 전용이며 삭제를 실행하지 않습니다.",
+                "Запустите безопасное сканирование мусора только для чтения и передайте результат локальному Codex. Рекомендации предназначены только для проверки и не удаляют файлы."
             ))
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
@@ -89,9 +90,16 @@ struct CodexRoundTripReviewView: View {
                     } else {
                         Text(t("还没有可导出的扫描结果", "尚無可匯出的掃描結果", "No scan result is available yet", "エクスポート可能なスキャン結果がありません", "내보낼 검사 결과가 아직 없습니다", "Нет результатов сканирования для экспорта"))
                             .font(.system(size: 13, weight: .semibold))
-                        Text(t("先在 Mac 优化智能体中运行一次垃圾、大文件、重复文件或启动项扫描。", "請先在 Mac 最佳化智慧代理中執行一次垃圾、大型檔案、重複檔案或啟動項目掃描。", "Run a junk, large-file, duplicate, or startup scan in the Mac Optimization Agent first.", "まず Mac 最適化エージェントでジャンク、大容量ファイル、重複、または起動項目のスキャンを実行してください。", "먼저 Mac 최적화 에이전트에서 정크, 대용량 파일, 중복 파일 또는 시작 항목 검사를 실행하세요.", "Сначала запустите в агенте оптимизации Mac сканирование мусора, крупных файлов, дубликатов или элементов автозапуска."))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        Text(t(
+                            "可直接运行安全垃圾扫描。它只读取缓存、日志、崩溃报告和 Saved Application State，不会执行清理。",
+                            "可直接執行安全垃圾掃描。它只讀取快取、日誌、當機報告與 Saved Application State，不會執行清理。",
+                            "Run the safe junk scan directly. It only reads caches, logs, crash reports, and Saved Application State; it does not clean anything.",
+                            "安全なジャンクスキャンを直接実行できます。キャッシュ、ログ、クラッシュレポート、Saved Application State のみを読み取り、削除は行いません。",
+                            "안전 정크 검사를 직접 실행할 수 있습니다. 캐시, 로그, 충돌 보고서와 Saved Application State만 읽으며 정리는 수행하지 않습니다.",
+                            "Можно напрямую запустить безопасное сканирование мусора. Оно только читает кэши, журналы, отчёты о сбоях и Saved Application State и ничего не очищает."
+                        ))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -103,15 +111,29 @@ struct CodexRoundTripReviewView: View {
     private var actionBar: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
+                Button {
+                    Task { await runSafeJunkScan() }
+                } label: {
+                    if isScanning {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text(t("扫描中…", "掃描中…", "Scanning…", "スキャン中…", "검사 중…", "Сканирование…"))
+                        }
+                    } else {
+                        Label(t("运行安全垃圾扫描", "執行安全垃圾掃描", "Run Safe Junk Scan", "安全ジャンクスキャン", "안전 정크 검사", "Безопасное сканирование мусора"), systemImage: "magnifyingglass")
+                    }
+                }
+                .disabled(isScanning)
+
                 Button(action: exportCurrentScan) {
                     Label(t("导出给 Codex", "匯出給 Codex", "Export for Codex", "Codex 用に書き出す", "Codex용 내보내기", "Экспорт для Codex"), systemImage: "square.and.arrow.up")
                 }
-                .disabled(!reportAvailable)
+                .disabled(!reportAvailable || isScanning)
 
                 Button(action: importAssessment) {
                     Label(t("导入评估", "匯入評估", "Import assessment", "評価を読み込む", "평가 가져오기", "Импорт оценки"), systemImage: "square.and.arrow.down")
                 }
-                .disabled(!reportAvailable)
+                .disabled(!reportAvailable || isScanning)
 
                 Button(action: openWorkspaceFolder) {
                     Label(t("打开目录", "開啟目錄", "Open folder", "フォルダを開く", "폴더 열기", "Открыть папку"), systemImage: "folder")
@@ -214,6 +236,26 @@ struct CodexRoundTripReviewView: View {
 
     private func count(_ recommendation: CodexRecommendation) -> Int {
         validated.filter { $0.recommendation == recommendation }.count
+    }
+
+    private func runSafeJunkScan() async {
+        isScanning = true
+        validated = []
+        statusIsError = false
+        statusMessage = t("正在执行只读安全垃圾扫描…", "正在執行唯讀安全垃圾掃描…", "Running read-only safe junk scan…", "読み取り専用の安全ジャンクスキャンを実行中…", "읽기 전용 안전 정크 검사 실행 중…", "Выполняется безопасное сканирование мусора только для чтения…")
+        defer { isScanning = false }
+
+        let report = await maintenanceAgent.execute(
+            .scanJunk,
+            arguments: .init(minimumSizeMB: nil, olderThanDays: 7)
+        )
+
+        if report.findings.isEmpty {
+            statusMessage = t("扫描完成：没有找到 7 天以上的可评估垃圾文件。", "掃描完成：沒有找到 7 天以上的可評估垃圾檔案。", "Scan complete: no eligible junk files older than 7 days were found.", "スキャン完了：7日以上前の対象ジャンクファイルは見つかりませんでした。", "검사 완료: 7일 이상 된 평가 대상 정크 파일을 찾지 못했습니다.", "Сканирование завершено: подходящих файлов мусора старше 7 дней не найдено.")
+        } else {
+            statusMessage = t("扫描完成：", "掃描完成：", "Scan complete: ", "スキャン完了: ", "검사 완료: ", "Сканирование завершено: ")
+                + "\(report.count) · \(ByteCountFormatter.string(fromByteCount: report.bytes, countStyle: .file))"
+        }
     }
 
     private func exportCurrentScan() {

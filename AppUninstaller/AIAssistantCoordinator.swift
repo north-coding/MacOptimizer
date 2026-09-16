@@ -228,9 +228,6 @@ final class AIAssistantCoordinator: ObservableObject {
     @Published var messages: [AIAssistantMessage] = []
     @Published var isWorking = false
     @Published var progressText = ""
-    @Published var pendingCleanTargets: [AIAssistantTarget] = []
-    @Published var pendingAgentCleanup: [MacAgentFinding] = []
-
     private let settings = AIProviderSettingsStore.shared
     private let client = AIProviderClient()
     private let services = ScanServiceManager.shared
@@ -261,8 +258,6 @@ final class AIAssistantCoordinator: ObservableObject {
 
         let providerPrompt = trimmed.isEmpty ? attachedImagePrompt : trimmed
         messages.append(.init(role: .user, text: trimmed, attachments: attachments))
-        pendingCleanTargets = []
-        pendingAgentCleanup = []
         maintenanceAgent.cancelCleanup()
         isWorking = true
         progressText = organizingMessage
@@ -281,100 +276,11 @@ final class AIAssistantCoordinator: ObservableObject {
         isWorking = false
     }
 
-    func confirmPendingClean() async {
-        if !pendingAgentCleanup.isEmpty {
-            pendingAgentCleanup = []
-            isWorking = true
-            progressText = cleaningMessage
-            let result = await maintenanceAgent.confirmCleanup()
-            messages.append(.init(
-                role: .assistant,
-                text: agentCleanupCompleteMessage(result)
-            ))
-            progressText = ""
-            isWorking = false
-            return
-        }
-
-        let targets = pendingCleanTargets
-        guard !targets.isEmpty, !isWorking else { return }
-        pendingCleanTargets = []
-        isWorking = true
-        progressText = cleaningMessage
-
-        var cleanedCount = 0
-        var cleanedBytes: Int64 = 0
-        var failedCount = 0
-
-        for target in targets {
-            AppNavigationController.shared.selectedModule = target.module
-            switch target {
-            case .smartScan:
-                let result = await services.smartCleanerService.cleanAll()
-                cleanedCount += result.success
-                cleanedBytes += result.size
-                failedCount += result.failed
-            case .systemJunk:
-                let result = await services.junkCleaner.cleanSelectedByCategory()
-                cleanedBytes += result.cleaned
-                failedCount += result.failed > 0 ? 1 : 0
-            case .mailAttachments:
-                let result = await services.junkCleaner.cleanSelectedMailAttachments()
-                cleanedBytes += result.cleaned
-                failedCount += result.failed > 0 ? 1 : 0
-            case .deepClean:
-                let result = await services.deepCleanScanner.cleanSelected()
-                cleanedCount += result.count
-                cleanedBytes += result.size
-            case .privacy:
-                let result = await services.privacyScanner.cleanSelected()
-                cleanedBytes += result.cleaned
-                failedCount += result.failed > 0 ? 1 : 0
-            case .trash:
-                cleanedBytes += await services.trashScanner.emptyTrash()
-            case .malware:
-                let result = await services.malwareScanner.removeThreats()
-                cleanedCount += result.success
-                failedCount += result.failed
-            default:
-                break
-            }
-        }
-
-        messages.append(.init(
-            role: .assistant,
-            text: cleanCompleteMessage(count: cleanedCount, bytes: cleanedBytes, failed: failedCount)
-        ))
-        progressText = ""
-        isWorking = false
-    }
-
-    func cancelPendingClean() {
-        pendingCleanTargets = []
-        pendingAgentCleanup = []
-        maintenanceAgent.cancelCleanup()
-        messages.append(.init(role: .assistant, text: cleanCancelledMessage))
-    }
-
     func clearConversation(currentModule: AppModule) {
         messages = [.init(role: .assistant, text: welcomeMessage(currentModule))]
         lastOpenedModule = currentModule
-        pendingCleanTargets = []
-        pendingAgentCleanup = []
         maintenanceAgent.cancelCleanup()
         progressText = ""
-    }
-
-    var hasPendingCleanup: Bool {
-        !pendingAgentCleanup.isEmpty || !pendingCleanTargets.isEmpty
-    }
-
-    var pendingCleanupCount: Int {
-        pendingAgentCleanup.isEmpty ? selectedItemCount(for: pendingCleanTargets) : pendingAgentCleanup.count
-    }
-
-    var pendingCleanupBytes: Int64 {
-        pendingAgentCleanup.reduce(0) { $0 + $1.size }
     }
 
     private func runMaintenanceAgent(
@@ -397,12 +303,12 @@ final class AIAssistantCoordinator: ObservableObject {
                 userPrompt: transcript,
                 attachments: step == 0 ? attachments.map(\.payload) : []
             )
-            var decision = decodeAgentDecision(raw)
+            let decodedDecision = decodeAgentDecision(raw)
                 ?? fallbackAgentDecision(for: request, hasReport: latestReport != nil)
-
-            if decision.tool == .prepareCleanup && !explicitlyRequestsCleanup(request) {
-                decision = .init(tool: latestReport == nil ? .scanJunk : .finish, arguments: nil, message: nil)
-            }
+            let decision = AIAssistantReadOnlyPolicy.sanitize(
+                decodedDecision,
+                hasReport: latestReport != nil
+            )
 
             if decision.tool == .finish {
                 let reportText = latestReport.map(agentReportMessage) ?? agentReadyMessage
@@ -415,12 +321,6 @@ final class AIAssistantCoordinator: ObservableObject {
             progressText = agentProgressMessage(decision.tool)
             let report = await maintenanceAgent.execute(decision.tool, arguments: decision.arguments)
             latestReport = report
-
-            if decision.tool == .prepareCleanup {
-                pendingAgentCleanup = report.findings
-                messages.append(.init(role: .assistant, text: agentCleanupPreparedMessage(report)))
-                return
-            }
 
             transcript += """
 
@@ -438,15 +338,15 @@ final class AIAssistantCoordinator: ObservableObject {
         You are Mac Optimization Agent, a specialized autonomous maintenance agent running inside a macOS utility.
         You choose local tools; the macOS app executes them directly against the local filesystem and returns real aggregate results. Do not claim you personally accessed a path unless a tool result confirms it. Do not refer to existing application modules or APIs.
         Return exactly one JSON object and no Markdown:
-        {"tool":"scan_junk|scan_large_files|scan_duplicates|inspect_storage|inspect_system|inspect_startup|list_results|prepare_cleanup|finish","arguments":{"minimumSizeMB":100,"olderThanDays":3},"message":"localized final analysis"}
+        {"tool":"scan_junk|scan_large_files|scan_duplicates|inspect_storage|inspect_system|inspect_startup|list_results|finish","arguments":{"minimumSizeMB":100,"olderThanDays":3},"message":"localized final analysis"}
         Tool rules:
+        - This assistant is read-only. It may scan and explain cleanup candidates, but must never prepare or execute cleanup. If the user asks to clean or delete, inspect and explain instead.
         - scan_junk directly scans local caches, logs, crash reports, and saved application state.
         - scan_large_files directly scans user content. It never selects large files for automatic cleanup.
         - scan_duplicates directly groups files by size and verifies byte-identical copies with SHA-256. Duplicate files require manual review and are never automatically selected for cleanup.
         - inspect_storage reads real local disk capacity.
         - inspect_system reads processor, memory, uptime, power, and thermal state.
         - inspect_startup reads local launch-agent files.
-        - prepare_cleanup may be used only when the user explicitly asks to clean or delete. It prepares recoverable cleanup and always waits for in-app confirmation.
         - finish ends the loop. Its message must use only facts returned by tools, must not invent counts, sizes, diagnoses, paths, or completed cleanup.
         The interface language is \(LocalizationManager.shared.currentLanguage.rawValue). The message field must use that language only. JSON tool names stay exactly as specified.
         """
@@ -470,9 +370,6 @@ final class AIAssistantCoordinator: ObservableObject {
         if containsAny(["重复文件", "重复项", "duplicate", "duplicates", "重複ファイル", "중복 파일", "дубликат"]) {
             return .init(tool: .scanDuplicates, arguments: nil, message: nil)
         }
-        if explicitlyRequestsCleanup(request) {
-            return .init(tool: .prepareCleanup, arguments: .init(minimumSizeMB: nil, olderThanDays: 3), message: nil)
-        }
         if containsAny(["大文件", "大型", "large file", "big file", "大容量", "대용량", "большие файл"]) {
             return .init(tool: .scanLargeFiles, arguments: .init(minimumSizeMB: 100, olderThanDays: nil), message: nil)
         }
@@ -486,12 +383,6 @@ final class AIAssistantCoordinator: ObservableObject {
             return .init(tool: .inspectSystem, arguments: nil, message: nil)
         }
         return .init(tool: .scanJunk, arguments: .init(minimumSizeMB: nil, olderThanDays: 3), message: nil)
-    }
-
-    private func explicitlyRequestsCleanup(_ request: String) -> Bool {
-        let normalized = request.lowercased()
-        return ["清理", "删除", "移除", "clean", "delete", "remove", "クリーン", "削除", "정리", "삭제", "очист", "удал"]
-            .contains(where: normalized.contains)
     }
 
     private func agentProgressMessage(_ tool: MacAgentTool) -> String {
@@ -515,7 +406,6 @@ final class AIAssistantCoordinator: ObservableObject {
             .inspectSystem: [.chinese: "系统性能诊断", .traditionalChinese: "系統效能診斷", .english: "system diagnostics", .japanese: "システム診断", .korean: "시스템 진단", .russian: "диагностика системы"],
             .inspectStartup: [.chinese: "启动项检查", .traditionalChinese: "啟動項目檢查", .english: "startup inspection", .japanese: "起動項目チェック", .korean: "시작 항목 검사", .russian: "проверка автозапуска"],
             .listResults: [.chinese: "读取扫描结果", .traditionalChinese: "讀取掃描結果", .english: "result review", .japanese: "結果確認", .korean: "결과 확인", .russian: "просмотр результатов"],
-            .prepareCleanup: [.chinese: "准备安全清理", .traditionalChinese: "準備安全清理", .english: "safe cleanup preparation", .japanese: "安全なクリーンアップの準備", .korean: "안전한 정리 준비", .russian: "подготовка безопасной очистки"],
             .finish: [.chinese: "完成", .traditionalChinese: "完成", .english: "finish", .japanese: "完了", .korean: "완료", .russian: "завершение"]
         ]
         return values[tool]?[language] ?? tool.rawValue
@@ -577,58 +467,6 @@ final class AIAssistantCoordinator: ObservableObject {
             .korean: "Mac 최적화 에이전트가 준비되었습니다. 로컬 검사 및 진단 도구를 자율적으로 선택할 수 있습니다.",
             .russian: "Агент оптимизации Mac готов и может самостоятельно выбирать локальные инструменты сканирования и диагностики."
         ])
-    }
-
-    private func agentCleanupPreparedMessage(_ report: MacAgentToolReport) -> String {
-        localized([
-            .chinese: "智能体已直接检查本机并准备 \(report.count) 个可安全处理的项目，共 \(formattedBytes(report.bytes))。确认后这些文件会移入废纸篓，不会直接永久删除。",
-            .traditionalChinese: "智慧代理已直接檢查本機並準備 \(report.count) 個可安全處理的項目，共 \(formattedBytes(report.bytes))。確認後檔案會移至垃圾桶，不會直接永久刪除。",
-            .english: "The agent directly inspected this Mac and prepared \(report.count) safe items totaling \(formattedBytes(report.bytes)). After confirmation, files move to Trash and are not permanently deleted.",
-            .japanese: "エージェントがMacを直接確認し、安全に処理できる\(report.count)件（\(formattedBytes(report.bytes))）を準備しました。確認後は完全削除せずゴミ箱へ移動します。",
-            .korean: "에이전트가 Mac을 직접 검사하여 안전하게 처리할 \(report.count)개 항목(\(formattedBytes(report.bytes)))을 준비했습니다. 확인 후 영구 삭제하지 않고 휴지통으로 이동합니다.",
-            .russian: "Агент напрямую проверил Mac и подготовил безопасные объекты: \(report.count), \(formattedBytes(report.bytes)). После подтверждения они будут перемещены в Корзину без окончательного удаления."
-        ])
-    }
-
-    private func agentCleanupCompleteMessage(_ result: MacAgentCleanupResult) -> String {
-        localized([
-            .chinese: "智能体清理完成：已将 \(result.cleanedCount) 个项目（\(formattedBytes(result.cleanedBytes))）移入废纸篓，失败 \(result.failedCount) 个。",
-            .traditionalChinese: "智慧代理清理完成：已將 \(result.cleanedCount) 個項目（\(formattedBytes(result.cleanedBytes))）移至垃圾桶，失敗 \(result.failedCount) 個。",
-            .english: "Agent cleanup finished: \(result.cleanedCount) items (\(formattedBytes(result.cleanedBytes))) moved to Trash; \(result.failedCount) failed.",
-            .japanese: "エージェントのクリーンアップが完了しました。\(result.cleanedCount)件（\(formattedBytes(result.cleanedBytes))）をゴミ箱へ移動し、\(result.failedCount)件は失敗しました。",
-            .korean: "에이전트 정리 완료: \(result.cleanedCount)개 항목(\(formattedBytes(result.cleanedBytes)))을 휴지통으로 이동했고 \(result.failedCount)개는 실패했습니다.",
-            .russian: "Очистка завершена: в Корзину перемещено \(result.cleanedCount) объектов (\(formattedBytes(result.cleanedBytes))), ошибок: \(result.failedCount)."
-        ])
-    }
-
-    private func execute(_ plan: AIAssistantPlan) async {
-        switch plan.operation {
-        case .help:
-            messages.append(.init(role: .assistant, text: helpMessage))
-        case .status:
-            messages.append(.init(role: .assistant, text: statusMessage))
-        case .navigate:
-            if let target = plan.targets.first {
-                AppNavigationController.shared.selectedModule = target.module
-                messages.append(.init(role: .assistant, text: openedModuleMessage(target)))
-            }
-        case .scan, .clean, .scanAndClean:
-            guard await scan(plan.targets) else { return }
-            let cleanable = plan.targets.filter(\.supportsConfirmedClean)
-            if plan.operation == .clean || plan.operation == .scanAndClean {
-                if cleanable.isEmpty {
-                    messages.append(.init(role: .assistant, text: manualReviewMessage(plan.targets)))
-                } else if selectedItemCount(for: cleanable) == 0 {
-                    messages.append(.init(role: .assistant, text: nothingToCleanMessage))
-                } else {
-                    pendingCleanTargets = cleanable
-                    messages.append(.init(
-                        role: .assistant,
-                        text: cleanConfirmationMessage(cleanable)
-                    ))
-                }
-            }
-        }
     }
 
     private func scan(_ targets: [AIAssistantTarget]) async -> Bool {
@@ -882,12 +720,12 @@ final class AIAssistantCoordinator: ObservableObject {
     private func welcomeMessage(_ module: AppModule) -> String {
         let name = AIAssistantTarget.target(for: module).localizedName(language)
         return localized([
-            .chinese: "我是 Mac 优化智能体。我会自主选择独立的本机工具，直接检查垃圾文件、磁盘空间、系统状态和启动项；当前页面是“\(name)”。清理前一定会再次请你确认。",
-            .traditionalChinese: "我是 Mac 最佳化智慧代理。我會自主選擇獨立的本機工具，直接檢查垃圾檔案、磁碟空間、系統狀態與啟動項目；目前頁面是「\(name)」。清理前一定會再次請您確認。",
-            .english: "I’m Mac Optimization Agent. I autonomously choose independent local tools to inspect junk, storage, system health, and startup items. You’re currently on \(name). I always ask before cleanup.",
-            .japanese: "Mac最適化エージェントです。独立したローカルツールを自律的に選択し、ジャンク、ストレージ、システム状態、起動項目を直接確認します。現在のページは「\(name)」です。クリーンアップ前には必ず確認します。",
-            .korean: "Mac 최적화 에이전트입니다. 독립 로컬 도구를 자율적으로 선택해 정크 파일, 저장 공간, 시스템 상태 및 시작 항목을 직접 검사합니다. 현재 페이지는 \(name)입니다. 정리 전에는 반드시 확인합니다.",
-            .russian: "Я агент оптимизации Mac. Я самостоятельно выбираю независимые локальные инструменты для проверки мусора, диска, состояния системы и автозапуска. Текущая страница: «\(name)». Перед очисткой всегда запрашивается подтверждение."
+            .chinese: "我是 Mac 优化智能体。我会自主选择独立的本机工具，直接检查垃圾文件、磁盘空间、系统状态和启动项；当前页面是“\(name)”。我只提供只读分析和建议，不会清理或删除文件。",
+            .traditionalChinese: "我是 Mac 最佳化智慧代理。我會自主選擇獨立的本機工具，直接檢查垃圾檔案、磁碟空間、系統狀態與啟動項目；目前頁面是「\(name)」。我只提供唯讀分析和建議，不會清理或刪除檔案。",
+            .english: "I’m Mac Optimization Agent. I autonomously choose independent local tools to inspect junk, storage, system health, and startup items. You’re currently on \(name). I provide read-only analysis and advice and never clean or delete files.",
+            .japanese: "Mac最適化エージェントです。独立したローカルツールを自律的に選択し、ジャンク、ストレージ、システム状態、起動項目を直接確認します。現在のページは「\(name)」です。読み取り専用の分析と助言のみを行い、クリーンアップや削除はしません。",
+            .korean: "Mac 최적화 에이전트입니다. 독립 로컬 도구를 자율적으로 선택해 정크 파일, 저장 공간, 시스템 상태 및 시작 항목을 직접 검사합니다. 현재 페이지는 \(name)입니다. 읽기 전용 분석과 조언만 제공하며 파일을 정리하거나 삭제하지 않습니다.",
+            .russian: "Я агент оптимизации Mac. Я самостоятельно выбираю независимые локальные инструменты для проверки мусора, диска, состояния системы и автозапуска. Текущая страница: «\(name)». Я предоставляю только анализ и рекомендации в режиме чтения и никогда не очищаю и не удаляю файлы."
         ])
     }
 

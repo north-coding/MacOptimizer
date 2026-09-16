@@ -12,11 +12,16 @@ enum AppMenuLocalizer {
         if mainMenu.items.count > 1 { setTopLevelTitle(topLevelTitles.file, item: mainMenu.items[1]) }
         if mainMenu.items.count > 2 { setTopLevelTitle(topLevelTitles.edit, item: mainMenu.items[2]) }
         if mainMenu.items.count > 3 { setTopLevelTitle(topLevelTitles.view, item: mainMenu.items[3]) }
-        if let languageIndex = mainMenu.items.firstIndex(where: { item in
-            item.submenu?.items.contains(where: { AppLanguage.allCases.map(\.displayName).contains($0.title) }) == true
-        }) {
-            if mainMenu.items.indices.contains(languageIndex + 1) { setTopLevelTitle(topLevelTitles.window, item: mainMenu.items[languageIndex + 1]) }
-            if mainMenu.items.indices.contains(languageIndex + 2) { setTopLevelTitle(topLevelTitles.help, item: mainMenu.items[languageIndex + 2]) }
+
+        // Do not assume Window and Help immediately follow the in-app Language menu.
+        // Custom CommandMenu entries (for example Codex) may sit between them.
+        // Resolve the standard menus by their known localized titles instead.
+        let standardIndices = standardMenuIndices(in: mainMenu.items.map(\.title))
+        if let windowIndex = standardIndices.window, mainMenu.items.indices.contains(windowIndex) {
+            setTopLevelTitle(topLevelTitles.window, item: mainMenu.items[windowIndex])
+        }
+        if let helpIndex = standardIndices.help, mainMenu.items.indices.contains(helpIndex) {
+            setTopLevelTitle(topLevelTitles.help, item: mainMenu.items[helpIndex])
         }
 
         for item in mainMenu.items {
@@ -41,6 +46,18 @@ enum AppMenuLocalizer {
         for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
             window.title = "\(language.productName) — \(settingsTitle)"
         }
+    }
+
+    /// Returns standard Window/Help menu positions without relying on adjacency.
+    /// Kept internal so the menu-shape contract can be covered by tests without
+    /// mutating NSApplication global state.
+    static func standardMenuIndices(in titles: [String]) -> (window: Int?, help: Int?) {
+        let windowTitles = ["窗口", "視窗", "Window", "ウインドウ", "윈도우", "Окно"]
+        let helpTitles = ["帮助", "輔助說明", "Help", "ヘルプ", "도움말", "Справка"]
+        return (
+            window: titles.firstIndex(where: { windowTitles.contains($0) }),
+            help: titles.firstIndex(where: { helpTitles.contains($0) })
+        )
     }
 
     private static func localize(menu: NSMenu?, language: AppLanguage) {

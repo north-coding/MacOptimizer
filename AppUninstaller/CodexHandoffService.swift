@@ -88,6 +88,8 @@ enum CodexHandoffService {
             "\(home)/Movies",
             "\(home)/Music",
             "\(home)/Pictures",
+            "\(home)/Library/Application Support",
+            "\(home)/Library/Preferences",
             "\(home)/Library/Keychains",
             "\(home)/Library/LaunchAgents",
             "\(home)/Library/Containers",

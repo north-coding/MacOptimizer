@@ -52,6 +52,22 @@ enum CodexHandoffError: Error, Equatable {
     case findingMismatch(String)
 }
 
+enum CodexHandoffWorkspaceError: Error, Equatable {
+    case noScanResults
+    case assessmentMissing(String)
+}
+
+extension CodexHandoffWorkspaceError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .noScanResults:
+            return "There is no scan result available for Codex handoff."
+        case .assessmentMissing(let path):
+            return "No Codex assessment file was found at \(path)."
+        }
+    }
+}
+
 enum CodexHandoffService {
     static let schemaVersion = 1
 
@@ -72,6 +88,8 @@ enum CodexHandoffService {
             "\(home)/Movies",
             "\(home)/Music",
             "\(home)/Pictures",
+            "\(home)/Library/Application Support",
+            "\(home)/Library/Preferences",
             "\(home)/Library/Keychains",
             "\(home)/Library/LaunchAgents",
             "\(home)/Library/Containers",
@@ -158,5 +176,70 @@ enum CodexHandoffService {
         }
 
         return result
+    }
+}
+
+/// Deterministic local file workspace used to exchange one scan and one assessment
+/// with a local Codex session. It performs file I/O only; it never cleans or deletes.
+enum CodexHandoffWorkspace {
+    static let directoryName = "MacOptimizer-Codex-Handoff"
+    static let scanFileName = "scan.json"
+    static let assessmentFileName = "assessment.json"
+
+    static func directoryURL(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent(directoryName, isDirectory: true)
+    }
+
+    static func scanURL(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        directoryURL(home: home).appendingPathComponent(scanFileName, isDirectory: false)
+    }
+
+    static func assessmentURL(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        directoryURL(home: home).appendingPathComponent(assessmentFileName, isDirectory: false)
+    }
+
+    @discardableResult
+    static func export(
+        report: MacAgentToolReport,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        guard !report.findings.isEmpty else {
+            throw CodexHandoffWorkspaceError.noScanResults
+        }
+
+        let directory = directoryURL(home: home)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let data = try CodexHandoffService.encode(CodexHandoffService.makeEnvelope(from: report))
+        let url = scanURL(home: home)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    static func importAssessment(
+        report: MacAgentToolReport,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) throws -> [ValidatedCodexAssessment] {
+        guard !report.findings.isEmpty else {
+            throw CodexHandoffWorkspaceError.noScanResults
+        }
+
+        let url = assessmentURL(home: home)
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw CodexHandoffWorkspaceError.assessmentMissing(url.path)
+        }
+
+        let data = try Data(contentsOf: url)
+        let assessment = try CodexHandoffService.decodeAssessment(data)
+        let source = CodexHandoffService.makeEnvelope(from: report)
+        return try CodexHandoffService.validate(
+            assessment: assessment,
+            against: source,
+            home: home.standardizedFileURL.path
+        )
     }
 }

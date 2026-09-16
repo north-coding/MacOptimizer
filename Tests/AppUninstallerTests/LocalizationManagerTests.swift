@@ -74,6 +74,27 @@ final class LocalizationManagerTests: XCTestCase {
         assertTranslations(simplifiedChinese, source, expected: expected)
     }
 
+    func testLegacyBrandNameIsNormalizedAtLocalizationBoundary() {
+        localization.currentLanguage = .chinese
+        XCTAssertEqual(
+            localization.text("欢迎使用Mac优化大师", "Welcome to MacOptimizer"),
+            "欢迎使用MacOptimizer"
+        )
+
+        localization.currentLanguage = .traditionalChinese
+        XCTAssertEqual(
+            localization.text(
+                simplifiedChinese: "Mac优化大师",
+                traditionalChinese: "Mac最佳化大師",
+                english: "MacOptimizer",
+                japanese: "Macオプティマイザー",
+                korean: "Mac 최적화 도구",
+                russian: "MacOptimizer"
+            ),
+            "MacOptimizer"
+        )
+    }
+
     func testStandardMenuIndicesIgnoreCustomCodexMenuBetweenLanguageAndWindow() {
         let titles = ["MacOptimizer", "File", "Edit", "View", "Language", "Codex", "Window", "Help"]
 

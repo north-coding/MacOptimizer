@@ -8,7 +8,7 @@ enum AppMenuLocalizer {
         guard let mainMenu = NSApp.mainMenu else { return }
 
         let topLevelTitles = localizedTopLevelTitles(language)
-        if !mainMenu.items.isEmpty { setTopLevelTitle(language.productName, item: mainMenu.items[0]) }
+        if !mainMenu.items.isEmpty { setTopLevelTitle(ProductIdentity.displayName, item: mainMenu.items[0]) }
         if mainMenu.items.count > 1 { setTopLevelTitle(topLevelTitles.file, item: mainMenu.items[1]) }
         if mainMenu.items.count > 2 { setTopLevelTitle(topLevelTitles.edit, item: mainMenu.items[2]) }
         if mainMenu.items.count > 3 { setTopLevelTitle(topLevelTitles.view, item: mainMenu.items[3]) }
@@ -27,7 +27,7 @@ enum AppMenuLocalizer {
         for item in mainMenu.items {
             let current = item.title
             if isApplicationMenuTitle(current) {
-                setTopLevelTitle(language.productName, item: item)
+                setTopLevelTitle(ProductIdentity.displayName, item: item)
             } else if matches(current, ["文件", "檔案", "File", "ファイル", "파일", "Файл"]) {
                 item.title = topLevelTitles.file
             } else if matches(current, ["编辑", "編輯", "Edit", "編集", "편집", "Правка"]) {
@@ -42,9 +42,11 @@ enum AppMenuLocalizer {
             localize(menu: item.submenu, language: language)
         }
 
+        NSApp.mainWindow?.title = ProductIdentity.displayName
+
         let settingsTitle = t(language, "设置", "設定", "Settings", "設定", "설정", "Настройки")
         for window in NSApp.windows where window.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" {
-            window.title = "\(language.productName) — \(settingsTitle)"
+            window.title = "\(ProductIdentity.displayName) — \(settingsTitle)"
         }
     }
 

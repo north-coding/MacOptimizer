@@ -127,16 +127,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     var localeIdentifier: String { rawValue }
 
-    var productName: String {
-        switch self {
-        case .chinese: return "Mac优化大师"
-        case .traditionalChinese: return "Mac最佳化大師"
-        case .english: return "MacOptimizer"
-        case .japanese: return "Macオプティマイザー"
-        case .korean: return "Mac 최적화 도구"
-        case .russian: return "MacOptimizer"
-        }
-    }
+    var productName: String { ProductIdentity.displayName }
 
     static var suggested: AppLanguage {
         let preferred = Locale.preferredLanguages.first?.lowercased() ?? "en"
@@ -188,21 +179,23 @@ class LocalizationManager: ObservableObject {
     /// Product-wide localization entry point for legacy Chinese/English pairs.
     /// Japanese, Korean and Russian never fall back to Simplified Chinese.
     func text(_ simplifiedChinese: String, _ english: String) -> String {
+        let localized: String
         switch currentLanguage {
         case .chinese:
-            return simplifiedChinese
+            localized = simplifiedChinese
         case .traditionalChinese:
-            return phraseTranslations[english]?[.traditionalChinese]
+            localized = phraseTranslations[english]?[.traditionalChinese]
                 ?? dynamicTranslation(for: english, language: .traditionalChinese)
                 ?? simplifiedChinese.applyingTransform(StringTransform("Hans-Hant"), reverse: false)
                 ?? simplifiedChinese
         case .english:
-            return english
+            localized = english
         case .japanese, .korean, .russian:
-            return phraseTranslations[english]?[currentLanguage]
+            localized = phraseTranslations[english]?[currentLanguage]
                 ?? dynamicTranslation(for: english, language: currentLanguage)
                 ?? english
         }
+        return ProductIdentity.normalizingLegacyProductName(in: localized)
     }
 
     func text(
@@ -213,14 +206,16 @@ class LocalizationManager: ObservableObject {
         korean: String,
         russian: String
     ) -> String {
+        let localized: String
         switch currentLanguage {
-        case .chinese: return simplifiedChinese
-        case .traditionalChinese: return traditionalChinese
-        case .english: return english
-        case .japanese: return japanese
-        case .korean: return korean
-        case .russian: return russian
+        case .chinese: localized = simplifiedChinese
+        case .traditionalChinese: localized = traditionalChinese
+        case .english: localized = english
+        case .japanese: localized = japanese
+        case .korean: localized = korean
+        case .russian: localized = russian
         }
+        return ProductIdentity.normalizingLegacyProductName(in: localized)
     }
     
     // MARK: - 翻译函数

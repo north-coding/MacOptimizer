@@ -74,6 +74,25 @@ final class LocalizationManagerTests: XCTestCase {
         assertTranslations(simplifiedChinese, source, expected: expected)
     }
 
+    func testStandardMenuIndicesIgnoreCustomCodexMenuBetweenLanguageAndWindow() {
+        let titles = ["MacOptimizer", "File", "Edit", "View", "Language", "Codex", "Window", "Help"]
+
+        let indices = AppMenuLocalizer.standardMenuIndices(in: titles)
+
+        XCTAssertEqual(indices.window, 6)
+        XCTAssertEqual(indices.help, 7)
+        XCTAssertEqual(titles[5], "Codex")
+    }
+
+    func testStandardMenuIndicesRecognizeLocalizedWindowAndHelpTitles() {
+        let titles = ["Mac优化大师", "文件", "编辑", "显示", "语言", "Codex", "窗口", "帮助"]
+
+        let indices = AppMenuLocalizer.standardMenuIndices(in: titles)
+
+        XCTAssertEqual(indices.window, 6)
+        XCTAssertEqual(indices.help, 7)
+    }
+
     private func assertTranslations(
         _ simplifiedChinese: String,
         _ english: String,

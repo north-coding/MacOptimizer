@@ -58,7 +58,7 @@ struct AIAssistantView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(t("Mac 优化智能体", "Mac 最佳化智慧代理", "Mac Optimization Agent", "Mac最適化エージェント", "Mac 최적화 에이전트", "Агент оптимизации Mac"))
                     .font(.system(size: 15, weight: .semibold))
-                Text(t("本机扫描 · 安全清理 · 性能诊断", "本機掃描 · 安全清理 · 效能診斷", "Local scanning · Safe cleanup · Diagnostics", "ローカルスキャン · 安全なクリーンアップ · 診断", "로컬 검사 · 안전한 정리 · 진단", "Локальное сканирование · Безопасная очистка · Диагностика"))
+                Text(t("本机扫描 · 只读分析 · 性能诊断", "本機掃描 · 唯讀分析 · 效能診斷", "Local scanning · Read-only analysis · Diagnostics", "ローカルスキャン · 読み取り専用分析 · 診断", "로컬 검사 · 읽기 전용 분석 · 진단", "Локальное сканирование · Анализ только для чтения · Диагностика"))
                     .font(.system(size: 10.5))
                     .foregroundColor(.white.opacity(0.45))
             }
@@ -124,10 +124,6 @@ struct AIAssistantView: View {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
-            }
-
-            if assistant.hasPendingCleanup {
-                cleanConfirmationBar
             }
 
             composer
@@ -313,33 +309,6 @@ struct AIAssistantView: View {
         }
         .padding(.top, 5)
         .padding(.trailing, 5)
-    }
-
-    private var cleanConfirmationBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.shield.fill")
-                .foregroundColor(.orange)
-            Text(t("智能体准备清理 \(assistant.pendingCleanupCount) 个项目（\(formattedPendingBytes)），需要你的确认", "智慧代理準備清理 \(assistant.pendingCleanupCount) 個項目（\(formattedPendingBytes)），需要您的確認", "Agent prepared \(assistant.pendingCleanupCount) items (\(formattedPendingBytes)); your confirmation is required", "エージェントが\(assistant.pendingCleanupCount)件（\(formattedPendingBytes)）を準備しました。確認が必要です", "에이전트가 \(assistant.pendingCleanupCount)개 항목(\(formattedPendingBytes))을 준비했습니다. 확인이 필요합니다", "Агент подготовил объектов: \(assistant.pendingCleanupCount) (\(formattedPendingBytes)); требуется подтверждение"))
-                .font(.system(size: 12, weight: .medium))
-            Spacer()
-            Button(t("取消", "取消", "Cancel", "キャンセル", "취소", "Отмена")) {
-                assistant.cancelPendingClean()
-            }
-            .buttonStyle(.bordered)
-
-            Button(t("确认清理", "確認清理", "Confirm Cleanup", "クリーンアップを確認", "정리 확인", "Подтвердить очистку")) {
-                Task { await assistant.confirmPendingClean() }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 52)
-        .background(Color.orange.opacity(0.09))
-    }
-
-    private var formattedPendingBytes: String {
-        ByteCountFormatter.string(fromByteCount: assistant.pendingCleanupBytes, countStyle: .file)
     }
 
     private func send() {

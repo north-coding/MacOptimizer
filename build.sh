@@ -13,12 +13,12 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}    Mac优化大师 (MacOptimizer) 构建脚本${NC}"
+echo -e "${BLUE}    MacOptimizer 构建脚本${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
 # 1. 定义变量
-APP_NAME="Mac优化大师"
+APP_NAME="MacOptimizer"
 EXECUTABLE_NAME="AppUninstaller"
 BUNDLE_NAME="${APP_NAME}.app"
 BUILD_DIR="build"
@@ -102,7 +102,7 @@ for video_file in "${SOURCE_DIR}"/*.mp4; do
 done
 VIDEO_COUNT=$(ls -1 "${SOURCE_DIR}"/*.mp4 2>/dev/null | wc -l | tr -d ' ')
 if [ "$VIDEO_COUNT" -gt 0 ]; then
-    echo -e "${GREEN}✓ 已复制 ${VIDEO_COUNT} 个视频资源${NC}"
+    echo -e "${GREEN}✓ 已复制 ${VIDEO_COUNT} 个 MP4 视频资源${NC}"
 fi
 
 # 5. 编译 (Apple Silicon)

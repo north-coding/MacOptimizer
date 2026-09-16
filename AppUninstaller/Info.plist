@@ -26,9 +26,9 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Mac优化大师</string>
+    <string>MacOptimizer</string>
     <key>CFBundleDisplayName</key>
-    <string>Mac优化大师</string>
+    <string>MacOptimizer</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
